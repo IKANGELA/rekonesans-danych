@@ -2,6 +2,8 @@
 
 Szybki raport jakości pliku **CSV lub Excel** – zanim zaczniesz czyścić dane, od razu widzisz, co jest w nich nie tak.
 
+**Wypróbuj online:** https://ikangela.github.io/rekonesans-danych/
+
 Działa **w całości w przeglądarce**: Python uruchamia się lokalnie dzięki [Pyodide](https://pyodide.org) (WebAssembly),
 a plik nie jest nigdzie wysyłany.
 
