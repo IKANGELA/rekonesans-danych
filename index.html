@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rekonesans danych</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236d3a62'/%3E%3Ccircle cx='14' cy='14' r='6' fill='none' stroke='%23fff' stroke-width='2.4'/%3E%3Cpath d='M18.5 18.5l5 5' stroke='%23fff' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta name="description" content="Szybki raport jakości pliku CSV lub Excel: formaty, warianty zapisu, spacje, błędy kodowania, wartości odstające. Działa w przeglądarce – plik nie jest nigdzie wysyłany.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+<style>
+/* Kolory i czcionki z portfolio ikangela.pl */
+:root {
+    --fiolet: #6d3a62;
+    --fiolet-ciemny: #4b2945;
+    --fiolet-jasny: #8a657f;
+    --tekst: #252429;
+    --tekst-2: #3e3b42;
+    --szary: #69656c;
+    --szary-jasny: #969199;
+    --linia: #e6e1e4;
+    --tlo: #f8f7f5;
+    --tlo-2: #f0ecef;
+    --bialy: #ffffff;
+    --zielony: #13612e;
+    --czerwony: #b82105;
+    --pomaranczowy: #a14f00;
+    --cien: 0 24px 60px -32px rgba(22, 24, 29, 0.35);
+    --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--tlo);
+    color: var(--tekst);
+    font: 16px/1.6 Inter, system-ui, sans-serif;
+}
+
+.kontener { max-width: 1100px; margin: 0 auto; padding: 48px 16px; }
+
+.nadtytul {
+    display: inline-block;
+    margin-bottom: 12px;
+    color: var(--fiolet);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+h1, h2, h3 { font-family: Manrope, sans-serif; letter-spacing: -0.02em; margin: 0; }
+h1 { font-size: clamp(28px, 5vw, 40px); line-height: 1.15; }
+h2 { font-size: 22px; margin-bottom: 16px; }
+h3 { font-size: 17px; }
+
+.wstep { color: var(--tekst-2); margin: 16px 0 32px; max-width: 680px; }
+
+.karta {
+    background: var(--bialy);
+    border-radius: 18px;
+    box-shadow: var(--cien);
+    padding: 28px;
+}
+
+/* --- wybór pliku --- */
+.strefa {
+    display: block;
+    border: 2px dashed var(--szary-jasny);
+    border-radius: 16px;
+    padding: 36px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+}
+.strefa:hover, .strefa.nad { border-color: var(--fiolet); background: var(--tlo-2); }
+.strefa.zablokowana { opacity: .55; cursor: wait; }
+.strefa p { margin: 8px 0 0; color: var(--szary); font-size: 14px; }
+.strefa input { display: none; }
+
+.przycisk {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    border-radius: 999px;
+    padding: 12px 24px;
+    background: var(--fiolet);
+    color: var(--bialy);
+    font: 700 13px Inter, sans-serif;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background .2s;
+}
+.przycisk:hover { background: var(--fiolet-ciemny); }
+.przycisk.obrys { background: transparent; color: var(--fiolet); box-shadow: inset 0 0 0 2px var(--fiolet); }
+.przycisk.obrys:hover { background: var(--tlo-2); }
+
+.link-przyklad {
+    background: none;
+    border: 0;
+    margin-top: 14px;
+    color: var(--fiolet);
+    font: 600 14px Inter, sans-serif;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.status { display: flex; align-items: center; gap: 10px; margin-top: 18px; font-size: 14px; color: var(--szary); }
+.status.blad { color: var(--czerwony); }
+.kropka { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--fiolet-jasny); animation: puls 1.2s ease-in-out infinite; }
+.status.gotowy .kropka { background: var(--zielony); animation: none; }
+.status.blad .kropka { background: var(--czerwony); animation: none; }
+@keyframes puls { 50% { opacity: .3; } }
+
+/* --- raport --- */
+.raport { display: none; margin-top: 28px; }
+.raport.widoczny { display: block; }
+.raport > section + section { margin-top: 28px; }
+
+.naglowek-raportu { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 12px; margin-bottom: 16px; }
+.naglowek-raportu h2 { margin: 0; word-break: break-all; }
+
+.kafelki { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.kafelek { background: var(--tlo-2); border-radius: 12px; padding: 14px 16px; }
+.kafelek span { display: block; font-size: 12px; color: var(--szary); }
+.kafelek strong { font-family: Manrope, sans-serif; font-size: 19px; }
+.kafelek.uwaga { background: #fbeee6; }
+.kafelek.uwaga strong { color: var(--pomaranczowy); }
+
+.uwagi { margin: 14px 0 0; padding-left: 20px; color: var(--pomaranczowy); font-size: 14px; }
+
+/* tabela podsumowania */
+.tabela-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { padding: 10px 10px; border-bottom: 1px solid var(--linia); text-align: center; white-space: nowrap; }
+th { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--szary); font-weight: 700; }
+th:first-child, td:first-child, td:nth-child(2) { text-align: left; }
+td:first-child a { color: var(--tekst); font-weight: 600; text-decoration: none; }
+td:first-child a:hover { color: var(--fiolet); text-decoration: underline; }
+.zero { color: var(--szary-jasny); }
+.liczba-problemu {
+    display: inline-block; min-width: 28px; padding: 2px 8px; border-radius: 999px;
+    background: #fbeee6; color: var(--pomaranczowy); font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.typ { font-family: var(--mono); font-size: 12px; color: var(--szary); }
+
+/* szczegóły kolumn */
+details.kolumna { border: 1px solid var(--linia); border-radius: 14px; background: var(--bialy); }
+details.kolumna + details.kolumna { margin-top: 10px; }
+details.kolumna summary {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+    padding: 14px 18px; cursor: pointer; list-style: none;
+}
+details.kolumna summary::-webkit-details-marker { display: none; }
+details.kolumna summary::before { content: "▸"; color: var(--fiolet); transition: transform .2s; }
+details.kolumna[open] summary::before { transform: rotate(90deg); }
+.nazwa-kolumny { font-family: var(--mono); font-weight: 700; }
+.etykieta { font-size: 12px; color: var(--szary); }
+.etykieta.problem { color: var(--pomaranczowy); font-weight: 700; }
+.etykieta.ok { color: var(--zielony); font-weight: 700; }
+.szczegoly { padding: 0 18px 18px; display: grid; gap: 16px; }
+.blok h4 { margin: 0 0 6px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--fiolet); }
+.blok p { margin: 0 0 6px; font-size: 14px; color: var(--tekst-2); }
+.chipy { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+    display: inline-flex; gap: 6px; align-items: baseline;
+    padding: 4px 10px; border-radius: 8px; background: var(--tlo-2);
+    font-family: var(--mono); font-size: 13px; white-space: pre;
+}
+.chip b { font-family: Inter, sans-serif; font-size: 12px; color: var(--szary); font-weight: 600; }
+.grupa { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--linia); }
+.grupa:last-child { border-bottom: 0; }
+
+.legenda { font-size: 13px; color: var(--szary); margin-top: 10px; }
+
+/* --- zakładki kolumn (jak arkusze) --- */
+:root { --poziom-3: #b82105; --poziom-2: #d97706; --poziom-1: #b8a3b2; --poziom-0: #13612e; }
+.naglowek-zakladek { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 10px; }
+.naglowek-zakladek h2 { margin: 0; }
+.sortowanie { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--szary); }
+.sortowanie button {
+    border: 1px solid var(--linia); background: var(--bialy); color: var(--tekst-2);
+    border-radius: 999px; padding: 5px 12px; font: 600 12px Inter, sans-serif; cursor: pointer;
+}
+.sortowanie button[aria-pressed="true"] { background: var(--fiolet); border-color: var(--fiolet); color: var(--bialy); }
+.legenda-kolorow { display: flex; flex-wrap: wrap; gap: 14px; margin: 6px 0 12px; font-size: 12px; color: var(--szary); }
+.legenda-kolorow .kolor::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.kolor.poziom-3::before { background: var(--poziom-3); }
+.kolor.poziom-2::before { background: var(--poziom-2); }
+.kolor.poziom-1::before { background: var(--poziom-1); }
+.kolor.poziom-0::before { background: var(--poziom-0); }
+
+.zakladki {
+    display: flex; gap: 4px; overflow-x: auto; padding: 0 2px;
+    border-bottom: 2px solid var(--fiolet); scrollbar-width: thin;
+}
+.zakladka {
+    flex: none; display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px 8px; margin-bottom: -2px;
+    border: 1px solid var(--linia); border-bottom: 2px solid var(--fiolet);
+    border-radius: 10px 10px 0 0; background: var(--tlo-2);
+    font: 600 13px var(--mono); color: var(--tekst-2); cursor: pointer;
+    box-shadow: inset 0 3px 0 transparent; transition: background .15s;
+}
+.zakladka:hover { background: #e8e1e6; }
+.zakladka:focus-visible { outline: 2px solid var(--fiolet); outline-offset: 2px; }
+.zakladka[aria-selected="true"] {
+    background: var(--bialy); color: var(--tekst);
+    border: 2px solid var(--fiolet); border-bottom-color: var(--bialy);
+}
+.zakladka.poziom-3 { box-shadow: inset 0 4px 0 var(--poziom-3); }
+.zakladka.poziom-2 { box-shadow: inset 0 4px 0 var(--poziom-2); }
+.zakladka.poziom-1 { box-shadow: inset 0 4px 0 var(--poziom-1); }
+.nazwa-zakladki { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.znacznik {
+    min-width: 22px; padding: 1px 7px; border-radius: 999px; text-align: center;
+    font: 700 11px Inter, sans-serif; background: var(--bialy); color: var(--szary);
+}
+.poziom-3 .znacznik { background: var(--poziom-3); color: #fff; }
+.poziom-2 .znacznik { background: var(--poziom-2); color: #fff; }
+.poziom-1 .znacznik { background: #efe7ec; color: var(--fiolet-ciemny); }
+.poziom-0 .znacznik { color: var(--poziom-0); background: transparent; }
+
+.panele {
+    border: 2px solid var(--fiolet); border-top: 0; border-radius: 0 0 14px 14px;
+    padding: 18px 20px 22px; background: var(--bialy);
+}
+.panel { display: grid; gap: 14px; }
+.panel[hidden] { display: none; }
+.glowka-panelu { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; }
+.glowka-panelu h3 { font: 700 20px var(--mono); letter-spacing: 0; }
+.glowka-panelu p { width: 100%; margin: 0; }
+.stopien { padding: 2px 10px; border-radius: 999px; font: 700 11px Inter, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+.stopien.poziom-3 { background: #fbe4df; color: var(--poziom-3); }
+.stopien.poziom-2 { background: #fdeed9; color: #9a4f00; }
+.stopien.poziom-1 { background: var(--tlo-2); color: var(--fiolet-ciemny); }
+.stopien.poziom-0 { background: #e3f1e7; color: var(--poziom-0); }
+.sekcja-panelu { margin: 6px 0 -4px; font: 700 11px Inter, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--szary); }
+.brak-problemow { margin: 0; color: var(--poziom-0); font-weight: 600; }
+.blok.problem { border-left: 4px solid var(--poziom-2); padding-left: 12px; }
+.blok.problem.najwiekszy { border-left-color: var(--poziom-3); background: #fff8f6; border-radius: 0 10px 10px 0; padding: 10px 12px; }
+.blok h4 { display: flex; align-items: center; gap: 8px; }
+.waga { padding: 1px 8px; border-radius: 999px; background: #fdeed9; color: #9a4f00; font: 700 11px Inter, sans-serif; letter-spacing: 0; text-transform: none; }
+
+@media (max-width: 600px) {
+    .panele { padding: 14px 12px 16px; }
+    .nazwa-zakladki { max-width: 120px; }
+}
+
+/* --- poprawki i zapis --- */
+.poprawki { background: var(--tlo-2); border-radius: 10px; padding: 10px 14px; }
+.poprawki h4 { margin-bottom: 4px; }
+.opcja { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; font-size: 14px; cursor: pointer; }
+.opcja input { accent-color: var(--fiolet); margin-top: 4px; flex: none; }
+.opcja b { color: var(--fiolet); font-weight: 700; }
+.czyszczenie { border-top: 2px solid var(--fiolet); padding-top: 24px; }
+.opcje-siatka { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 18px 0; }
+.opcje-grupa { border: 1px solid var(--linia); border-radius: 14px; padding: 16px 18px; }
+.opcje-grupa h3 { margin-bottom: 8px; font-size: 15px; }
+.pole { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--szary); margin-bottom: 10px; }
+.pole select { font: 14px Inter, sans-serif; padding: 8px 10px; border: 1px solid var(--szary-jasny); border-radius: 10px; background: var(--bialy); color: var(--tekst); }
+.zapis { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; padding: 18px; border-radius: 14px; background: var(--tlo-2); }
+.pole-zapis { margin: 0; flex: 1 1 280px; font-weight: 700; color: var(--tekst); font-size: 14px; }
+.zaznaczanie { font-size: 13px; color: var(--szary); width: 100%; }
+.zaznaczanie .link-przyklad { margin: 0; font-size: 13px; }
+.wynik-czyszczenia { display: none; margin-top: 22px; }
+.wynik-czyszczenia.widoczny { display: block; }
+.wynik-czyszczenia h3 { margin: 22px 0 8px; }
+.akcje-pobierania { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+.akcje-pobierania a { text-decoration: none; }
+table.dziennik td, table.dziennik th { text-align: left; white-space: normal; vertical-align: top; }
+table.dziennik td:nth-child(3) { white-space: nowrap; }
+table.dziennik td:last-child { font-family: var(--mono); font-size: 12px; }
+
+.cechy { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-top: 32px; }
+.cecha h3 { margin: 0 0 4px; font: 700 12px Inter, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fiolet); }
+.cecha p { margin: 0; font-size: 14px; color: var(--tekst-2); }
+.stopka { margin-top: 32px; font-size: 13px; color: var(--szary); }
+.stopka a { color: var(--fiolet); }
+
+@media (max-width: 600px) {
+    .karta { padding: 18px; }
+    .szczegoly { padding: 0 12px 14px; }
+}
+</style>
+</head>
+<body>
+<main class="kontener">
+
+    <span class="nadtytul">Narzędzie · Python w przeglądarce</span>
+    <h1>Rekonesans danych</h1>
+    <p class="wstep">
+        Wgraj plik CSV lub Excel, a w kilka sekund zobaczysz, co jest w nim nie tak:
+        różne formaty dat i liczb, warianty zapisu tej samej wartości, zbędne spacje,
+        błędy kodowania polskich znaków, jednostki i podejrzane wartości.
+    </p>
+
+    <section class="karta">
+        <label class="strefa zablokowana" id="strefa">
+            <input type="file" id="plik" accept=".csv,.txt,.tsv,.xlsx,.xlsm" disabled>
+            <span class="przycisk">Wybierz plik</span>
+            <p>CSV lub Excel · lub przeciągnij go tutaj</p>
+        </label>
+        <div style="text-align:center">
+            <button class="link-przyklad" id="przyklad" hidden disabled>Wypróbuj na przykładowym pliku</button>
+        </div>
+        <div class="status" id="status" role="status" aria-live="polite">
+            <span class="kropka"></span>
+            <span id="status-tekst">Uruchamiam Pythona w przeglądarce… (pierwszy raz może to potrwać kilka sekund)</span>
+        </div>
+
+        <div class="raport" id="raport">
+            <section>
+                <div class="naglowek-raportu">
+                    <div>
+                        <span class="nadtytul">Raport</span>
+                        <h2 id="nazwa-pliku"></h2>
+                    </div>
+                    <button class="przycisk obrys" id="wyczysc">Wyczyść</button>
+                </div>
+                <div class="kafelki" id="kafelki"></div>
+                <ul class="uwagi" id="uwagi"></ul>
+            </section>
+
+            <section>
+                <h2>Problemy według kolumn</h2>
+                <div class="tabela-wrap">
+                    <table>
+                        <thead>
+                            <tr id="naglowek-tabeli"></tr>
+                        </thead>
+                        <tbody id="tabela"></tbody>
+                    </table>
+                </div>
+                <p class="legenda">Liczby oznaczają liczbę wartości z problemem (dla formatów, wariantów i jednostek: liczbę różnych odmian).
+                    „Puste” liczy tylko wpisy udające brak danych, np. NULL albo „brak” – zwykłe puste komórki widać w szczegółach.</p>
+            </section>
+
+            <section id="szczegoly">
+                <div class="naglowek-zakladek">
+                    <h2>Szczegóły kolumn</h2>
+                    <div class="sortowanie" role="group" aria-label="Kolejność zakładek">
+                        <span>Kolejność:</span>
+                        <button type="button" data-sort="plik" aria-pressed="true">jak w pliku</button>
+                        <button type="button" data-sort="problemy" aria-pressed="false">najwięcej problemów</button>
+                    </div>
+                </div>
+                <p class="legenda" id="podsumowanie-zakladek"></p>
+                <div class="legenda-kolorow">
+                    <span class="kolor poziom-3">poważne</span>
+                    <span class="kolor poziom-2">średnie</span>
+                    <span class="kolor poziom-1">drobne</span>
+                    <span class="kolor poziom-0">bez uwag</span>
+                </div>
+                <div class="zakladki" id="zakladki" role="tablist" aria-label="Kolumny pliku"></div>
+                <div class="panele" id="panele"></div>
+                <p class="legenda">W przykładach: <code>·</code> oznacza zbędną spację, <code>⍽</code> twardą spację (zwykle z kopiowania z Worda lub strony).
+                    Zakładki przełączysz też strzałkami ← →.</p>
+            </section>
+
+            <section class="czyszczenie" id="czyszczenie">
+                <h2>Wyczyść i zapisz</h2>
+                <p class="legenda">Poprawki dla poszczególnych kolumn zaznaczasz w szczegółach kolumn powyżej (pole „popraw”).
+                    Tu wybierasz ustawienia całego pliku i format zapisu.</p>
+
+                <div class="opcje-siatka">
+                    <div class="opcje-grupa">
+                        <h3>Cały plik</h3>
+                        <label class="opcja"><input type="checkbox" id="opt-duplikaty" checked> <span id="opt-duplikaty-opis">usuń zdublowane wiersze</span></label>
+                        <label class="opcja"><input type="checkbox" id="opt-puste" checked> usuń całkowicie puste kolumny</label>
+                        <label class="opcja"><input type="checkbox" id="opt-stale"> usuń kolumny ze stałą wartością</label>
+                        <label class="opcja"><input type="checkbox" id="opt-naglowki" checked> usuń spacje z nazw kolumn</label>
+                        <label class="opcja"><input type="checkbox" id="opt-uwagi"> dodaj kolumnę „do_sprawdzenia” z uwagami dla wiersza</label>
+                    </div>
+                    <div class="opcje-grupa">
+                        <h3>Formaty docelowe</h3>
+                        <label class="pole">Daty
+                            <select id="opt-data">
+                                <option value="RRRR-MM-DD">RRRR-MM-DD (2025-03-05)</option>
+                                <option value="DD.MM.RRRR">DD.MM.RRRR (05.03.2025)</option>
+                                <option value="DD/MM/RRRR">DD/MM/RRRR (05/03/2025)</option>
+                                <option value="DD-MM-RRRR">DD-MM-RRRR (05-03-2025)</option>
+                            </select>
+                        </label>
+                        <label class="pole">Tak / nie
+                            <select id="opt-taknie">
+                                <option value="tak/nie">tak / nie</option>
+                                <option value="T/N">T / N</option>
+                                <option value="1/0">1 / 0</option>
+                                <option value="TRUE/FALSE">TRUE / FALSE</option>
+                            </select>
+                        </label>
+                        <label class="pole">Telefony
+                            <select id="opt-telefon">
+                                <option value="600 100 200">600 100 200</option>
+                                <option value="600100200">600100200</option>
+                                <option value="+48 600 100 200">+48 600 100 200</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="zapis">
+                    <label class="pole pole-zapis">Wyczyść i zapisz w formacie:
+                        <select id="opt-format">
+                            <option value="xlsx">Excel (.xlsx) – z dziennikiem zmian w osobnym arkuszu</option>
+                            <option value="csv;">CSV – średnik ; (polski Excel)</option>
+                            <option value="csv,">CSV – przecinek ,</option>
+                        </select>
+                    </label>
+                    <button class="przycisk" id="zapisz">Wyczyść i zapisz</button>
+                    <span class="zaznaczanie">
+                        <button class="link-przyklad" id="zaznacz-wszystko" type="button">zaznacz wszystkie poprawki</button> ·
+                        <button class="link-przyklad" id="odznacz-wszystko" type="button">odznacz wszystkie</button>
+                    </span>
+                </div>
+
+                <div class="wynik-czyszczenia" id="wynik-czyszczenia">
+                    <div class="kafelki" id="kafelki-czyszczenia"></div>
+                    <div class="akcje-pobierania">
+                        <a class="przycisk" id="pobierz-plik">Pobierz plik ponownie</a>
+                        <a class="przycisk obrys" id="pobierz-dziennik">Pobierz dziennik zmian (CSV)</a>
+                    </div>
+                    <h3>Dziennik zmian</h3>
+                    <div class="tabela-wrap"><table class="dziennik"><thead><tr><th>Kolumna</th><th>Co zmieniono</th><th>Komórki</th><th>Przykłady</th></tr></thead><tbody id="dziennik"></tbody></table></div>
+                    <h3>Do sprawdzenia ręcznie</h3>
+                    <p class="legenda">Tych rzeczy nie da się bezpiecznie poprawić automatycznie. Numer wiersza odnosi się do pliku źródłowego (wiersz 2 = pierwszy wiersz danych).</p>
+                    <div class="tabela-wrap"><table class="dziennik"><thead><tr><th>Wiersz</th><th>Kolumna</th><th>Problem</th><th>Wartość</th></tr></thead><tbody id="do-sprawdzenia"></tbody></table></div>
+                </div>
+            </section>
+        </div>
+    </section>
+
+    <section class="cechy">
+        <div class="cecha">
+            <h3>Prywatnie</h3>
+            <p>Plik nie jest nigdzie wysyłany – analiza odbywa się na Twoim komputerze.</p>
+        </div>
+        <div class="cecha">
+            <h3>Wartości tak, jak są</h3>
+            <p>Każda wartość jest badana jako tekst, zanim cokolwiek ją zmieni – widać prawdziwe formaty i spacje.</p>
+        </div>
+        <div class="cecha">
+            <h3>Polskie dane</h3>
+            <p>Rozpoznaje przecinek dziesiętny, kodowanie Windows-1250, polskie nazwy miesięcy i jednostek.</p>
+        </div>
+    </section>
+
+    <p class="stopka">
+        Projekt: <a href="https://ikangela.pl" target="_top">Angelika Berecka</a> ·
+        Kod: <a href="https://github.com/IKANGELA" target="_blank" rel="noopener">GitHub</a>
+    </p>
+</main>
+
+<script src="pyodide/pyodide.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
